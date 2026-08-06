@@ -46,7 +46,7 @@ function GaugeCard({ label, value, min, max, good, suffix = '' }) {
   )
 }
 
-function RadarMetricas({ m }) {
+function RadarMetricas({ m, compact = false }) {
   const data = useMemo(() => {
     if (!m) return []
     const sharpeN = Math.min(100, Math.max(0, ((m.sharpe_ratio + 1) / 4) * 100))
@@ -63,19 +63,21 @@ function RadarMetricas({ m }) {
     ]
   }, [m])
 
+  const height = compact ? 180 : 220
+
   return (
-    <div className="card">
+    <div className="card radar-card" style={{ width: compact ? 320 : '100%' }}>
       <div className="card-header">
         <span className="card-title">Perfil de Riesgo · Radar</span>
         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Score normalizado 0-100</span>
       </div>
       <div className="card-body" style={{ paddingTop: 0 }}>
-        <ResponsiveContainer width="100%" height={220}>
+        <ResponsiveContainer width="100%" height={height}>
           <RadarChart data={data} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
             <PolarGrid stroke="rgba(255,255,255,0.07)" />
             <PolarAngleAxis
               dataKey="metric"
-              tick={{ fill: '#7a90b0', fontSize: 11, fontFamily: 'DM Mono' }}
+              tick={{ fill: 'var(--text-secondary)', fontSize: 11, fontFamily: 'DM Mono' }}
             />
             <Tooltip
               contentStyle={{
@@ -89,8 +91,8 @@ function RadarMetricas({ m }) {
             <Radar
               name="Score"
               dataKey="value"
-              stroke="#3b82f6"
-              fill="#3b82f6"
+              stroke="var(--accent)"
+              fill="var(--accent)"
               fillOpacity={0.15}
               strokeWidth={1.5}
             />
@@ -211,8 +213,35 @@ export default function Metricas({ ticker }) {
                 <GaugeCard label="Profit Factor" value={m.profit_factor}  min={0}  max={3}   good="high" />
               </div>
 
-              {/* Radar */}
-              <RadarMetricas m={m} />
+              {/* Radar + explicación: radar compacto alineado a la izquierda y ventana explicativa a la derecha */}
+              <div className="radar-wrap">
+                <RadarMetricas m={m} compact={true} />
+
+                <div className="card radar-explain">
+                  <div className="card-header">
+                    <span className="card-title">Significado de las 5 puntas</span>
+                  </div>
+                  <div className="card-body">
+                    <ul className="explain-list">
+                      <li>
+                        <strong>Sharpe</strong>: mide el retorno ajustado por riesgo (mayor = mejor). Compara retorno extra por unidad de volatilidad.
+                      </li>
+                      <li>
+                        <strong>Sortino</strong>: parecido al Sharpe pero solo penaliza la volatilidad negativa (caídas).
+                      </li>
+                      <li>
+                        <strong>Win Rate</strong>: porcentaje de operaciones ganadoras. Indica consistencia de la estrategia.
+                      </li>
+                      <li>
+                        <strong>Drawdown</strong>: máxima caída desde un pico al fondo. Valores más bajos (cercanos a 0) son mejores.
+                      </li>
+                      <li>
+                        <strong>Profit F.</strong> (Profit Factor): ratio entre ganancias y pérdidas. Mayor a 1 indica rentabilidad neta.
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
             </>
           : <div className="empty-state">
               <div className="empty-icon">◌</div>
