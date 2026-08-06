@@ -1,6 +1,6 @@
 // src/App.jsx
-import { useState } from 'react'
-import Sidebar from './components/Sidebar'
+import { useEffect, useState } from 'react'
+import Sidebar from './components/sidebar'
 import TickerSelector from './components/TickerSelector'
 import Dashboard from './pages/Dashboard'
 import Precios   from './pages/Precios'
@@ -25,8 +25,21 @@ const PAGES = {
 }
 
 export default function App() {
-  const [page,   setPage]   = useState('dashboard')
+  const [page, setPage] = useState('dashboard')
   const [ticker, setTicker] = useState('AAPL')
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === 'undefined') return 'dark'
+
+    const savedTheme = window.localStorage.getItem('theme')
+    if (savedTheme === 'dark' || savedTheme === 'light') return savedTheme
+
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+  })
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    window.localStorage.setItem('theme', theme)
+  }, [theme])
 
   const PageComponent = PAGES[page] || Dashboard
 
@@ -48,6 +61,23 @@ export default function App() {
           </div>
 
           <div style={{ flex: 1 }} />
+
+          <div className="theme-switcher" role="group" aria-label="Selector de tema">
+            <button
+              type="button"
+              className={`theme-option${theme === 'dark' ? ' active' : ''}`}
+              onClick={() => setTheme('dark')}
+            >
+              Oscuro
+            </button>
+            <button
+              type="button"
+              className={`theme-option${theme === 'light' ? ' active' : ''}`}
+              onClick={() => setTheme('light')}
+            >
+              Claro
+            </button>
+          </div>
 
           <TickerSelector selected={ticker} onChange={setTicker} />
         </header>

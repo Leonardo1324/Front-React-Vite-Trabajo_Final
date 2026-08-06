@@ -3,6 +3,8 @@
 
 /* ── Design tokens ─────────────────────────────────────────── */
 :root {
+  color-scheme: dark;
+
   --bg-base:      #080b10;
   --bg-panel:     #0e1420;
   --bg-card:      #131c2e;
@@ -33,6 +35,30 @@
 
   --sidebar-w:    220px;
   --header-h:     56px;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-base:      #f5f7fb;
+  --bg-panel:     #ffffff;
+  --bg-card:      #f8fafc;
+  --bg-hover:     #eaf2ff;
+  --border:       rgba(15, 23, 42, 0.1);
+  --border-accent: rgba(37, 99, 235, 0.2);
+
+  --text-primary:   #0f172a;
+  --text-secondary: #475569;
+  --text-muted:     #64748b;
+
+  --accent:       #2563eb;
+  --accent-glow:  rgba(37, 99, 235, 0.12);
+  --green:        #15803d;
+  --green-muted:  rgba(21, 128, 61, 0.12);
+  --red:          #dc2626;
+  --red-muted:    rgba(220, 38, 38, 0.12);
+  --amber:        #d97706;
+  --amber-muted:  rgba(217, 119, 6, 0.12);
 }
 
 /* ── Base ──────────────────────────────────────────────────── */
@@ -188,6 +214,40 @@ body {
 .sidebar-version {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+/* ── Theme switcher ───────────────────────────────────────── */
+.theme-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+}
+
+.theme-option {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.theme-option:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.theme-option.active {
+  background: var(--accent);
+  color: #fff;
 }
 
 /* ── Ticker selector ───────────────────────────────────────── */
