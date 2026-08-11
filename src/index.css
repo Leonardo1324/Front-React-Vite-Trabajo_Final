@@ -251,34 +251,49 @@ body {
 }
 
 /* ── Ticker selector ───────────────────────────────────────── */
-.ticker-tabs {
+.ticker-dropdown {
   display: flex;
-  gap: 4px;
+  align-items: center;
 }
 
-.ticker-tab {
-  padding: 5px 12px;
+.ticker-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 7px 32px 7px 12px;
   font-family: var(--font-mono);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-secondary);
+  background: var(--bg-card);
+  color: var(--text-primary);
   cursor: pointer;
   transition: all 0.15s;
   letter-spacing: 0.05em;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%), linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 9px) calc(50% - 2px);
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
 }
 
-.ticker-tab:hover {
+.ticker-select:hover {
   border-color: var(--border-accent);
-  color: var(--text-primary);
 }
 
-.ticker-tab.active {
-  background: var(--accent);
+.ticker-select:focus {
+  outline: none;
   border-color: var(--accent);
-  color: #fff;
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.ticker-select:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.ticker-select option {
+  background: var(--bg-card);
+  color: var(--text-primary);
 }
 
 /* ── Cards ─────────────────────────────────────────────────── */
