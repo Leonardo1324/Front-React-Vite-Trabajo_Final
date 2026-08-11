@@ -64,7 +64,7 @@ function RadarMetricas({ m, compact = false }) {
   }, [m])
 
   const height = compact ? 180 : 220
-
+  
   return (
     <div className="card radar-card" style={{ width: compact ? 320 : '100%' }}>
       <div className="card-header">
