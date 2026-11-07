@@ -7,10 +7,10 @@ import {
 
 function StatusBadge({ estado }) {
   const cfg = {
-    ok:           { color: 'var(--green)',  bg: 'var(--green-muted)',  label: 'Completado' },
-    ejecutando:   { color: 'var(--amber)',  bg: 'var(--amber-muted)',  label: 'Ejecutando…' },
-    error:        { color: 'var(--red)',    bg: 'var(--red-muted)',    label: 'Error' },
-    sin_ejecutar: { color: 'var(--text-muted)', bg: 'var(--bg-hover)', label: 'Sin ejecutar' },
+    ok:           { color: 'var(--green)',      bg: 'var(--green-muted)', label: 'Completado' },
+    ejecutando:   { color: 'var(--amber)',      bg: 'var(--amber-muted)', label: 'Ejecutando…' },
+    error:        { color: 'var(--red)',        bg: 'var(--red-muted)',   label: 'Error' },
+    sin_ejecutar: { color: 'var(--text-muted)', bg: 'var(--bg-hover)',    label: 'Sin ejecutar' },
   }[estado] || { color: 'var(--text-muted)', bg: 'var(--bg-hover)', label: estado }
 
   return (
@@ -31,10 +31,10 @@ function StatusBadge({ estado }) {
 
 function PipelineStep({ number, title, desc, status }) {
   const colors = {
-    pending:   { color: 'var(--text-muted)',     bg: 'var(--bg-hover)' },
-    running:   { color: 'var(--amber)',           bg: 'var(--amber-muted)' },
-    done:      { color: 'var(--green)',           bg: 'var(--green-muted)' },
-    error:     { color: 'var(--red)',             bg: 'var(--red-muted)' },
+    pending:   { color: 'var(--text-muted)', bg: 'var(--bg-hover)' },
+    running:   { color: 'var(--amber)',      bg: 'var(--amber-muted)' },
+    done:      { color: 'var(--green)',      bg: 'var(--green-muted)' },
+    error:     { color: 'var(--red)',        bg: 'var(--red-muted)' },
   }
   const s = colors[status] || colors.pending
 
@@ -105,10 +105,12 @@ function JsonViewer({ data }) {
   )
 }
 
-export default function Modelo({ ticker }) {
+export default function Modelo({ user }) {
   const [estado, setEstado] = useState({ estado: 'sin_ejecutar', detalle: {} })
   const [loading, setLoading] = useState(false)
   const [log, setLog] = useState([])
+
+  const esViewer = user?.rol === 'VIEWER'
 
   // Polling del estado del modelo
   useEffect(() => {
@@ -128,7 +130,7 @@ export default function Modelo({ ticker }) {
     addLog(`Iniciando: ${label}…`)
     try {
       const res = await fn()
-      addLog(`✓ ${label} — respuesta: ${JSON.stringify(res).slice(0, 120)}`)
+      addLog(`✓ ${label} — respuesta: ${JSON.stringify(res).slice(0, 140)}`)
     } catch (e) {
       addLog(`✗ Error en ${label}: ${e.message}`)
     } finally {
@@ -138,18 +140,18 @@ export default function Modelo({ ticker }) {
 
   const pipelineSteps = [
     {
-      title: 'Ingesta yfinance',
-      desc: 'Descarga datos OHLCV históricos desde Yahoo Finance → SQLite',
+      title: 'Ingesta yfinance + Series Macro FRED',
+      desc: 'Descarga datos OHLCV históricos desde Yahoo Finance y 5 series de la Reserva Federal (T10Y2Y, FEDFUNDS, VIXCLS, DCOILWTICO, BAA10Y)',
       statusKey: 'ingesta',
     },
     {
-      title: 'Limpieza con R',
-      desc: 'Ejecuta cleaner.R: elimina outliers, calcula 15 indicadores técnicos',
+      title: 'Limpieza Estadística e Indicadores con R',
+      desc: 'Ejecuta cleaner.R: elimina outliers, construye rezagos temporales, ratios de volatilidad y 14 indicadores técnicos (29 features en total)',
       statusKey: 'r_cleaning',
     },
     {
-      title: 'Entrenamiento XGBoost',
-      desc: 'Etiquetado, split temporal, XGBClassifier + backtesting sin lookahead',
+      title: 'Entrenamiento Dual Multi-Horizonte (XGBoost + Random Forest)',
+      desc: 'Entrena y serializa 8 modelos (1d ±0.5%, 5d ±1.5%, 15d ±3.0%, 30d ±5.0%) con XGBClassifier y RandomForestClassifier + backtesting sin lookahead',
       statusKey: 'xgboost',
     },
   ]
@@ -169,18 +171,32 @@ export default function Modelo({ ticker }) {
       {/* Estado global */}
       <div className="card">
         <div className="card-header">
-          <span className="card-title">Estado del sistema</span>
+          <span className="card-title">Estado del sistema · Motor Dual Multi-Horizonte</span>
           <StatusBadge estado={estado.estado} />
         </div>
         <div className="card-body">
+          {esViewer && (
+            <div style={{
+              marginBottom: 14,
+              padding: '8px 12px',
+              background: 'var(--amber-muted)',
+              border: '1px solid rgba(245,158,11,0.25)',
+              borderRadius: 6,
+              fontSize: 12,
+              color: 'var(--amber)',
+            }}>
+              🔒 Tu rol actual es <strong>VIEWER</strong> (solo lectura). Iniciá sesión como <strong>ADMIN</strong> o <strong>TRADER</strong> para disparar entrenamientos o ingesta.
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {/* Pipeline completo */}
             <button
               className="btn btn-primary"
-              disabled={loading || estado.estado === 'ejecutando'}
+              disabled={loading || estado.estado === 'ejecutando' || esViewer}
               onClick={() => ejecutar(
                 () => lanzarPipelineCompleto({}),
-                'Pipeline completo'
+                'Pipeline completo (Ingesta + R + XGBoost/RF Multi-Horizonte)'
               )}
             >
               ▶ Pipeline completo
@@ -189,7 +205,7 @@ export default function Modelo({ ticker }) {
             {/* Solo ingesta */}
             <button
               className="btn"
-              disabled={loading || estado.estado === 'ejecutando'}
+              disabled={loading || estado.estado === 'ejecutando' || esViewer}
               onClick={() => ejecutar(
                 () => actualizarIngesta({}),
                 'Ingesta de datos'
@@ -201,13 +217,13 @@ export default function Modelo({ ticker }) {
             {/* Solo entrenar */}
             <button
               className="btn"
-              disabled={loading || estado.estado === 'ejecutando'}
+              disabled={loading || estado.estado === 'ejecutando' || esViewer}
               onClick={() => ejecutar(
                 () => lanzarEntrenamiento({}),
-                'Entrenamiento XGBoost'
+                'Entrenamiento Dual (XGBoost + Random Forest)'
               )}
             >
-              ⚡ Solo entrenar
+              ⚡ Solo entrenar (8 modelos)
             </button>
           </div>
 
@@ -225,6 +241,22 @@ export default function Modelo({ ticker }) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Arquitectura de los 8 modelos */}
+      <div className="metrics-grid">
+        {[
+          { label: 'Horizonte 1 Día',   value: '±0.5%', sub: 'xgb_global_1d · rf_global_1d' },
+          { label: 'Horizonte 5 Días',  value: '±1.5%', sub: 'xgb_global_5d · rf_global_5d' },
+          { label: 'Horizonte 15 Días', value: '±3.0%', sub: 'xgb_global_15d · rf_global_15d' },
+          { label: 'Horizonte 30 Días', value: '±5.0%', sub: 'xgb_global_30d · rf_global_30d' },
+        ].map(h => (
+          <div key={h.label} className="metric-card">
+            <div className="metric-label">{h.label}</div>
+            <div className="metric-value neutral" style={{ fontSize: 18 }}>Umbral {h.value}</div>
+            <div className="metric-sub">{h.sub}</div>
+          </div>
+        ))}
       </div>
 
       {/* Pasos del pipeline */}

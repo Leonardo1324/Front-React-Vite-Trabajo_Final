@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, Tooltip,
 } from 'recharts'
 import { useApi } from '../hooks/useApi'
-import { getMetricas, getAllMetricas } from '../services/api'
+import { getMetricas, getAllMetricas, compararModelos } from '../services/api'
 import { fmt, signClass } from '../utils/format'
 
 function GaugeCard({ label, value, min, max, good, suffix = '' }) {
@@ -55,16 +55,16 @@ function RadarMetricas({ m, compact = false }) {
     const ddN = Math.max(0, 100 + (m.max_drawdown_pct || 0))
     const pfN = Math.min(100, ((m.profit_factor || 0) / 3) * 100)
     return [
-      { metric: 'Sharpe',   value: Math.round(sharpeN) },
-      { metric: 'Sortino',  value: Math.round(sortinoN) },
-      { metric: 'Win Rate', value: Math.round(winN) },
-      { metric: 'Drawdown', value: Math.round(ddN) },
+      { metric: 'Sharpe',    value: Math.round(sharpeN) },
+      { metric: 'Sortino',   value: Math.round(sortinoN) },
+      { metric: 'Win Rate',  value: Math.round(winN) },
+      { metric: 'Drawdown',  value: Math.round(ddN) },
       { metric: 'Profit F.', value: Math.round(pfN) },
     ]
   }, [m])
 
   const height = compact ? 180 : 220
-  
+
   return (
     <div className="card radar-card" style={{ width: compact ? 320 : '100%' }}>
       <div className="card-header">
@@ -103,6 +103,89 @@ function RadarMetricas({ m, compact = false }) {
   )
 }
 
+// ── Comparativa Dual Backtesting: XGBoost vs Random Forest (Fase 1 - M2) ─────
+function ComparativaDualBacktesting({ ticker }) {
+  const { data, loading } = useApi(() => compararModelos(ticker), [ticker])
+
+  if (loading) {
+    return (
+      <div className="card">
+        <div className="card-body">
+          <div className="skeleton" style={{ height: 140, borderRadius: 6 }} />
+        </div>
+      </div>
+    )
+  }
+
+  if (!data) return null
+
+  const mXgb = data.metricas_xgboost || data.xgboost?.metricas || data.xgboost || {}
+  const mRf  = data.metricas_random_forest || data.random_forest?.metricas || data.random_forest || {}
+
+  const tieneMetricas =
+    mXgb.retorno_total_pct != null || mRf.retorno_total_pct != null ||
+    mXgb.sharpe_ratio != null || mRf.sharpe_ratio != null
+
+  if (!tieneMetricas) return null
+
+  const rows = [
+    { name: 'XGBoost (xgb_global_v1)', ...mXgb },
+    { name: 'Random Forest (rf_global_v1)', ...mRf },
+  ]
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div>
+          <span className="card-title">Comparativa de Backtesting · XGBoost vs Random Forest ({ticker})</span>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+            Evaluación fuera de muestra (test cronológico sin lookahead) de ambos algoritmos
+          </div>
+        </div>
+        <span className="tag tag-blue">M2 Dual</span>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Algoritmo</th>
+              <th>Retorno Total</th>
+              <th>Sharpe Ratio</th>
+              <th>Sortino Ratio</th>
+              <th>Max Drawdown</th>
+              <th>Win Rate</th>
+              <th>Profit Factor</th>
+              <th>Ops</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.name}>
+                <td style={{ fontWeight: 600 }}>{r.name}</td>
+                <td style={{ color: (r.retorno_total_pct ?? 0) >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
+                  {fmt.pct(r.retorno_total_pct)}
+                </td>
+                <td style={{ color: (r.sharpe_ratio ?? 0) > 1 ? 'var(--green)' : (r.sharpe_ratio ?? 0) < 0 ? 'var(--red)' : 'var(--text-secondary)' }}>
+                  {fmt.num3(r.sharpe_ratio)}
+                </td>
+                <td>{fmt.num3(r.sortino_ratio)}</td>
+                <td style={{ color: 'var(--red)' }}>{fmt.pct(r.max_drawdown_pct)}</td>
+                <td style={{ color: (r.win_rate_pct ?? 0) > 50 ? 'var(--green)' : 'var(--text-secondary)' }}>
+                  {fmt.pct(r.win_rate_pct)}
+                </td>
+                <td style={{ color: (r.profit_factor ?? 0) > 1 ? 'var(--green)' : 'var(--red)' }}>
+                  {fmt.num3(r.profit_factor)}
+                </td>
+                <td>{fmt.int(r.n_operaciones)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function ComparacionTabla() {
   const { data, loading } = useApi(getAllMetricas)
 
@@ -127,6 +210,7 @@ function ComparacionTabla() {
                 <thead>
                   <tr>
                     <th>Ticker</th>
+                    <th>Modelo</th>
                     <th>Retorno</th>
                     <th>Sharpe</th>
                     <th>Sortino</th>
@@ -138,10 +222,14 @@ function ComparacionTabla() {
                 </thead>
                 <tbody>
                   {data
+                    .slice()
                     .sort((a, b) => (b.retorno_total_pct || 0) - (a.retorno_total_pct || 0))
-                    .map(m => (
-                      <tr key={m.ticker}>
+                    .map((m, idx) => (
+                      <tr key={`${m.ticker}-${m.modelo_version || idx}`}>
                         <td><span className="tag tag-blue">{m.ticker}</span></td>
+                        <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {m.modelo_version || 'xgb_global_v1'}
+                        </td>
                         <td style={{ color: m.retorno_total_pct >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>
                           {fmt.pct(m.retorno_total_pct)}
                         </td>
@@ -172,7 +260,6 @@ export default function Metricas({ ticker }) {
 
   return (
     <div className="col fade-in">
-      {/* Cards de métricas detalladas */}
       {loading
         ? <div className="metrics-grid">
             {[...Array(6)].map((_, i) => (
@@ -213,7 +300,7 @@ export default function Metricas({ ticker }) {
                 <GaugeCard label="Profit Factor" value={m.profit_factor}  min={0}  max={3}   good="high" />
               </div>
 
-              {/* Radar + explicación: radar compacto alineado a la izquierda y ventana explicativa a la derecha */}
+              {/* Radar + explicación */}
               <div className="radar-wrap">
                 <RadarMetricas m={m} compact={true} />
 
@@ -250,7 +337,10 @@ export default function Metricas({ ticker }) {
             </div>
       }
 
-      {/* Tabla comparativa */}
+      {/* Comparativa de Backtesting XGBoost vs Random Forest */}
+      <ComparativaDualBacktesting ticker={ticker} />
+
+      {/* Tabla comparativa global */}
       <ComparacionTabla />
     </div>
   )
