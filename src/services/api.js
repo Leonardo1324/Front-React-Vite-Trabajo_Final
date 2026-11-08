@@ -73,7 +73,15 @@ async function downloadFile(path, defaultFilename) {
 // ── Base & Pipeline ───────────────────────────────────────────────────────────
 export const getHealth              = () => request('/')
 export const getActivos             = () => request('/activos/')
+export const getCatalogoMercado     = (p = {}) => { const q = new URLSearchParams(p).toString(); return request(`/activos/catalogo${q ? '?' + q : ''}`) }
 export const getActivo              = (t) => request(`/activos/${t}`)
+export const agregarActivo          = (ticker, inicio = null) =>
+  request('/activos/agregar', {
+    method: 'POST',
+    body: JSON.stringify({ ticker, ...(inicio ? { inicio } : {}) }),
+  })
+export const eliminarActivo         = (ticker) =>
+  request(`/activos/${encodeURIComponent(ticker)}`, { method: 'DELETE' })
 export const getPreciosRaw          = (t, p = {}) => { const q = new URLSearchParams(p).toString(); return request(`/precios/${t}${q ? '?' + q : ''}`) }
 export const getPreciosLimpios      = (t, p = {}) => { const q = new URLSearchParams(p).toString(); return request(`/precios/${t}/limpio${q ? '?' + q : ''}`) }
 export const getComparacionActivos  = (p = {}) => { const q = new URLSearchParams(p).toString(); return request(`/precios/comparar/multi${q ? '?' + q : ''}`) }

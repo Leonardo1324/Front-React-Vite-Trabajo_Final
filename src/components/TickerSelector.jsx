@@ -1,9 +1,16 @@
 // src/components/TickerSelector.jsx
+import { useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
 import { getActivos } from '../services/api'
 
 export default function TickerSelector({ selected, onChange }) {
-  const { data: activos, loading } = useApi(getActivos)
+  const { data: activos, loading, refetch } = useApi(getActivos)
+
+  useEffect(() => {
+    const handler = () => refetch()
+    window.addEventListener('finpredict:activos-updated', handler)
+    return () => window.removeEventListener('finpredict:activos-updated', handler)
+  }, [refetch])
 
   const DEFAULT = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA']
   const tickers = activos?.length ? activos.map(a => a.ticker) : DEFAULT

@@ -1,8 +1,8 @@
 // src/pages/Precios.jsx
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine,
+  Tooltip, ResponsiveContainer, ReferenceLine, Brush, ReferenceArea,
 } from 'recharts'
 import { useApi } from '../hooks/useApi'
 import { getPreciosLimpios } from '../services/api'
@@ -58,7 +58,7 @@ function RSIChart({ data }) {
   return (
     <div>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, letterSpacing: '0.08em' }}>
-        RSI 14 — Sobrecompra {'>'} 70 · Sobreventa {'<'} 30
+        RSI 14 (Sincronizado con Zoom) — Sobrecompra {'>'} 70 · Sobreventa {'<'} 30
       </div>
       <ResponsiveContainer width="100%" height={100}>
         <ComposedChart data={data} margin={{ top: 0, right: 4, bottom: 0, left: 0 }}>
@@ -69,7 +69,7 @@ function RSIChart({ data }) {
           <ReferenceLine y={70} stroke="rgba(239,68,68,0.4)"  strokeDasharray="3 2" />
           <ReferenceLine y={30} stroke="rgba(34,197,94,0.4)"  strokeDasharray="3 2" />
           <ReferenceLine y={50} stroke="rgba(255,255,255,0.08)" />
-          <Line type="monotone" dataKey="rsi14" stroke="#f59e0b" strokeWidth={1.5} dot={false} />
+          <Line type="monotone" dataKey="rsi14" stroke="#f59e0b" strokeWidth={1.5} dot={false} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -80,7 +80,7 @@ function MACDChart({ data }) {
   return (
     <div>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, letterSpacing: '0.08em' }}>
-        MACD · Señal · Histograma
+        MACD · Señal · Histograma (Sincronizado con Zoom)
       </div>
       <ResponsiveContainer width="100%" height={100}>
         <ComposedChart data={data} margin={{ top: 0, right: 4, bottom: 0, left: 0 }}>
@@ -89,9 +89,9 @@ function MACDChart({ data }) {
           <YAxis tick={{ fill: '#3d5070', fontSize: 10 }} tickLine={false} axisLine={false} width={40} tickFormatter={v => v.toFixed(1)} />
           <Tooltip content={() => null} />
           <ReferenceLine y={0} stroke="rgba(255,255,255,0.1)" />
-          <Bar dataKey="macd_hist" fill="#3b82f6" opacity={0.6} maxBarSize={4} />
-          <Line type="monotone" dataKey="macd"        stroke="#60a5fa" strokeWidth={1.5} dot={false} />
-          <Line type="monotone" dataKey="macd_signal" stroke="#f59e0b" strokeWidth={1}   dot={false} strokeDasharray="3 2" />
+          <Bar dataKey="macd_hist" fill="#3b82f6" opacity={0.6} maxBarSize={4} isAnimationActive={false} />
+          <Line type="monotone" dataKey="macd"        stroke="#60a5fa" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey="macd_signal" stroke="#f59e0b" strokeWidth={1}   dot={false} strokeDasharray="3 2" isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -104,6 +104,11 @@ export default function Precios({ ticker }) {
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [indicadores, setIndicadores] = useState(['sma20', 'bb_upper', 'bb_lower'])
+
+  // Estado de Zoom
+  const [zoomRange, setZoomRange] = useState({ start: 0, end: 0 })
+  const [dragLeft, setDragLeft] = useState(null)
+  const [dragRight, setDragRight] = useState(null)
 
   const handleSelectPreset = (val) => {
     setLimite(val)
@@ -144,6 +149,61 @@ export default function Precios({ ticker }) {
     })),
     [data]
   )
+
+  useEffect(() => {
+    if (chartData.length > 0) {
+      setZoomRange({ start: 0, end: chartData.length - 1 })
+    }
+  }, [chartData.length, ticker, limite, desde, hasta])
+
+  const visibleData = useMemo(() => {
+    if (!chartData.length) return []
+    const s = Math.max(0, Math.min(zoomRange.start, chartData.length - 1))
+    const e = Math.max(s + 1, Math.min(zoomRange.end, chartData.length - 1))
+    return chartData.slice(s, e + 1)
+  }, [chartData, zoomRange])
+
+  const isZoomed = chartData.length > 2 && (zoomRange.start > 0 || zoomRange.end < chartData.length - 1)
+
+  const handleZoomIn = () => {
+    const len = zoomRange.end - zoomRange.start
+    if (len <= 8) return
+    const step = Math.max(2, Math.floor(len * 0.2))
+    setZoomRange(prev => ({
+      start: Math.min(prev.end - 4, prev.start + step),
+      end: Math.max(prev.start + 4, prev.end - step),
+    }))
+  }
+
+  const handleZoomOut = () => {
+    if (!chartData.length) return
+    const len = zoomRange.end - zoomRange.start
+    const step = Math.max(5, Math.floor(len * 0.25))
+    setZoomRange(prev => ({
+      start: Math.max(0, prev.start - step),
+      end: Math.min(chartData.length - 1, prev.end + step),
+    }))
+  }
+
+  const handleResetZoom = () => {
+    if (!chartData.length) return
+    setZoomRange({ start: 0, end: chartData.length - 1 })
+  }
+
+  const handleMouseUp = () => {
+    if (dragLeft != null && dragRight != null && dragLeft !== dragRight) {
+      const idxA = chartData.findIndex(d => d.fecha === dragLeft)
+      const idxB = chartData.findIndex(d => d.fecha === dragRight)
+      if (idxA !== -1 && idxB !== -1 && Math.abs(idxA - idxB) >= 3) {
+        setZoomRange({
+          start: Math.min(idxA, idxB),
+          end: Math.max(idxA, idxB),
+        })
+      }
+    }
+    setDragLeft(null)
+    setDragRight(null)
+  }
 
   const lastRow = !error ? data?.at(-1) : null
 
@@ -267,18 +327,41 @@ export default function Precios({ ticker }) {
         </div>
       )}
 
-      {/* Gráfico de precios */}
-      <div className="card">
-        <div className="card-header">
-          <span className="card-title">
-            Precio + Indicadores Técnicos · {ticker}
-            {chartData.length > 0 && ` (${chartData[0]?.fechaCompleta} → ${chartData.at(-1)?.fechaCompleta} · ${chartData.length} ruedas)`}
-          </span>
-          <span className="tag tag-blue">14 Indicadores</span>
+      {/* Gráfico de precios con Zoom interactivo */}
+      <div className="card" style={{ userSelect: 'none' }}>
+        <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <span className="card-title">
+              Precio + Indicadores Técnicos · {ticker}
+            </span>
+            {visibleData.length > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                Tramo visible: {visibleData[0]?.fechaCompleta} → {visibleData.at(-1)?.fechaCompleta} ({visibleData.length} de {chartData.length} ruedas)
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              💡 Arrastrá en el gráfico para hacer zoom
+            </span>
+            <button type="button" className="btn" style={{ padding: '3px 8px', fontSize: 11 }} onClick={handleZoomIn} title="Acercar zoom">
+              🔍+
+            </button>
+            <button type="button" className="btn" style={{ padding: '3px 8px', fontSize: 11 }} onClick={handleZoomOut} disabled={!isZoomed} title="Alejar zoom">
+              🔍−
+            </button>
+            {isZoomed && (
+              <button type="button" className="btn btn-primary" style={{ padding: '3px 9px', fontSize: 11 }} onClick={handleResetZoom}>
+                ⟲ Restablecer Zoom
+              </button>
+            )}
+          </div>
         </div>
+
         <div className="card-body" style={{ paddingTop: 8 }}>
           {loading
-            ? <div className="skeleton" style={{ height: 280, borderRadius: 6 }} />
+            ? <div className="skeleton" style={{ height: 310, borderRadius: 6 }} />
             : error
               ? <div className="empty-state">
                   <div className="empty-icon">⚠</div>
@@ -289,8 +372,14 @@ export default function Precios({ ticker }) {
                 </div>
               : (
                 <>
-                  <ResponsiveContainer width="100%" height={280}>
-                    <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <ResponsiveContainer width="100%" height={310}>
+                    <ComposedChart
+                      data={chartData}
+                      margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+                      onMouseDown={e => e?.activeLabel && setDragLeft(e.activeLabel)}
+                      onMouseMove={e => dragLeft && e?.activeLabel && setDragRight(e.activeLabel)}
+                      onMouseUp={handleMouseUp}
+                    >
                       <defs>
                         <linearGradient id="closeGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.15} />
@@ -303,7 +392,7 @@ export default function Precios({ ticker }) {
                         tick={{ fill: '#3d5070', fontSize: 10, fontFamily: 'DM Mono' }}
                         tickLine={false}
                         axisLine={false}
-                        interval={Math.max(1, Math.floor(chartData.length / 6))}
+                        minTickGap={28}
                       />
                       <YAxis
                         tick={{ fill: '#3d5070', fontSize: 10, fontFamily: 'DM Mono' }}
@@ -315,7 +404,7 @@ export default function Precios({ ticker }) {
                       />
                       <Tooltip content={<PriceTooltip />} />
                       {/* Precio principal */}
-                      <Line type="monotone" dataKey="close" stroke="#3b82f6" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="close" stroke="#3b82f6" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
                       {/* Indicadores seleccionados */}
                       {INDICATOR_OPTS.filter(o => indicadores.includes(o.key)).map(opt => (
                         <Line
@@ -326,15 +415,39 @@ export default function Precios({ ticker }) {
                           strokeWidth={1}
                           dot={false}
                           strokeDasharray={opt.key.startsWith('bb') ? '4 2' : undefined}
+                          isAnimationActive={false}
                         />
                       ))}
+                      {dragLeft && dragRight && (
+                        <ReferenceArea
+                          x1={dragLeft}
+                          x2={dragRight}
+                          strokeOpacity={0.3}
+                          fill="#3b82f6"
+                          fillOpacity={0.22}
+                        />
+                      )}
+                      <Brush
+                        dataKey="fecha"
+                        height={26}
+                        stroke="#3b82f6"
+                        fill="rgba(15, 23, 42, 0.75)"
+                        travellerWidth={8}
+                        startIndex={zoomRange.start}
+                        endIndex={zoomRange.end}
+                        onChange={(r) => {
+                          if (r && typeof r.startIndex === 'number' && typeof r.endIndex === 'number') {
+                            setZoomRange({ start: r.startIndex, end: r.endIndex })
+                          }
+                        }}
+                      />
                     </ComposedChart>
                   </ResponsiveContainer>
 
-                  {/* Subgráficos */}
+                  {/* Subgráficos sincronizados con el Zoom */}
                   <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
-                    <RSIChart  data={chartData} />
-                    <MACDChart data={chartData} />
+                    <RSIChart  data={visibleData} />
+                    <MACDChart data={visibleData} />
                   </div>
                 </>
               )

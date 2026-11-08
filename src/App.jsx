@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import Sidebar from './components/sidebar'
 import TickerSelector from './components/TickerSelector'
 import Dashboard from './pages/Dashboard'
+import Catalogo  from './pages/Catalogo'
 import Precios   from './pages/Precios'
 import Comparar  from './pages/Comparar'
 import Señales   from './pages/Señales'
@@ -15,6 +16,7 @@ import { getToken, getPerfilActual, clearToken } from './services/api'
 
 const PAGE_TITLES = {
   dashboard: 'Dashboard',
+  catalogo:  'Catálogo Explorador de Activos (Yahoo Finance)',
   precios:   'Análisis de Precios e Indicadores',
   comparar:  'Comparador Multi-Activo',
   señales:   'Señales ML · Motor XGBoost & Horizontes',
@@ -26,6 +28,7 @@ const PAGE_TITLES = {
 
 const PAGES = {
   dashboard: Dashboard,
+  catalogo:  Catalogo,
   precios:   Precios,
   comparar:  Comparar,
   señales:   Señales,
@@ -172,14 +175,22 @@ export default function App() {
             </button>
           </div>
 
-          {paginaEfectiva !== 'comparar' && paginaEfectiva !== 'seguridad' && paginaEfectiva !== 'modelo' && (
+          {paginaEfectiva !== 'comparar' && paginaEfectiva !== 'catalogo' && paginaEfectiva !== 'seguridad' && paginaEfectiva !== 'modelo' && (
             <TickerSelector selected={ticker} onChange={setTicker} />
           )}
         </header>
 
         {/* Contenido */}
         <main className="page-body">
-          <PageComponent ticker={ticker} user={user} onAuthChange={setUser} />
+          <PageComponent
+            ticker={ticker}
+            user={user}
+            onAuthChange={setUser}
+            onSelectTicker={(t) => {
+              setTicker(t)
+              setPage('dashboard')
+            }}
+          />
         </main>
       </div>
     </div>

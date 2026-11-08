@@ -21,6 +21,13 @@ const ICONS = {
       <polyline points="1,9 6,5 10,7 15,6"/>
     </svg>
   ),
+  catalog: (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="nav-icon">
+      <circle cx="8" cy="8" r="6.5"/>
+      <ellipse cx="8" cy="8" rx="3" ry="6.5"/>
+      <line x1="1.5" y1="8" x2="14.5" y2="8"/>
+    </svg>
+  ),
   signal: (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="nav-icon">
       <circle cx="8" cy="8" r="2"/>
@@ -60,7 +67,8 @@ const ICONS = {
 }
 
 export default function Sidebar({ activePage, onNavigate, user }) {
-  const [modelStatus, setModelStatus] = useState('sin_ejecutar')
+  const [modelStatus, setModelStatus] = useState('ok')
+  const [modelVersion, setModelVersion] = useState('xgb_global_v1')
   const [backendOnline, setBackendOnline] = useState(true)
 
   useEffect(() => {
@@ -68,7 +76,8 @@ export default function Sidebar({ activePage, onNavigate, user }) {
       getEstadoModelo()
         .then(d => {
           setBackendOnline(true)
-          setModelStatus(d.estado)
+          setModelStatus(d.estado || 'ok')
+          setModelVersion(d.version_activa || 'xgb_global_v1')
         })
         .catch(() => {
           setBackendOnline(false)
@@ -80,24 +89,24 @@ export default function Sidebar({ activePage, onNavigate, user }) {
   }, [])
 
   const statusColor = !backendOnline ? 'red'
-    : modelStatus === 'ok' ? 'green'
     : modelStatus === 'ejecutando' ? 'amber'
     : modelStatus === 'error' ? 'red'
-    : 'amber'
+    : 'green'
 
   const esAdmin = user?.rol === 'ADMIN'
 
   const navAnalisis = [
-    { id: 'dashboard', label: 'Dashboard',        icon: ICONS.dashboard },
-    { id: 'precios',   label: 'Precios',          icon: ICONS.chart },
-    { id: 'comparar',  label: 'Comparar Activos', icon: ICONS.compare },
-    { id: 'señales',   label: 'Señales XGBoost',  icon: ICONS.signal },
-    { id: 'shap',      label: 'Explicabilidad',   icon: ICONS.shap },
-    { id: 'metricas',  label: 'Métricas',         icon: ICONS.metrics },
+    { id: 'dashboard', label: 'Dashboard',           icon: ICONS.dashboard },
+    { id: 'catalogo',  label: 'Catálogo de Activos', icon: ICONS.catalog },
+    { id: 'precios',   label: 'Precios',             icon: ICONS.chart },
+    { id: 'comparar',  label: 'Comparar Activos',    icon: ICONS.compare },
+    { id: 'señales',   label: 'Señales XGBoost',     icon: ICONS.signal },
+    { id: 'shap',      label: 'Explicabilidad',      icon: ICONS.shap },
+    { id: 'metricas',  label: 'Métricas',            icon: ICONS.metrics },
   ]
 
   const navAdmin = [
-    { id: 'modelo',    label: 'Control Pipeline',    icon: ICONS.model },
+    { id: 'modelo',    label: 'Motor XGBoost',        icon: ICONS.model },
     { id: 'seguridad', label: 'Usuarios & Auditoría', icon: ICONS.security },
   ]
 
@@ -142,8 +151,12 @@ export default function Sidebar({ activePage, onNavigate, user }) {
       <div className="sidebar-footer">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <span className={`dot ${statusColor}`}></span>
-          <span style={{ fontSize: 11, color: !backendOnline ? 'var(--red)' : 'var(--text-muted)' }}>
-            {!backendOnline ? 'Backend: apagado' : `Modelo: ${modelStatus}`}
+          <span style={{ fontSize: 11, color: !backendOnline ? 'var(--red)' : 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+            {!backendOnline
+              ? 'Backend: apagado'
+              : modelStatus === 'ejecutando'
+                ? 'Entrenando XGBoost…'
+                : `XGBoost: ${modelVersion}`}
           </span>
         </div>
         {user && (
@@ -151,7 +164,7 @@ export default function Sidebar({ activePage, onNavigate, user }) {
             👤 {user.username} · <strong style={{ color: 'var(--accent)' }}>{user.rol}</strong>
           </div>
         )}
-        <div className="sidebar-version">UNdeC 2026 · XGBoost</div>
+        <div className="sidebar-version">UNdeC 2026 · {modelVersion}</div>
       </div>
     </aside>
   )

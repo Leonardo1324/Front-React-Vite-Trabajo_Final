@@ -1,8 +1,8 @@
 // src/pages/Dashboard.jsx
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid,
+  ResponsiveContainer, CartesianGrid, Brush, ReferenceArea,
 } from 'recharts'
 import { useApi } from '../hooks/useApi'
 import {
@@ -43,23 +43,85 @@ function HistorialPrecioChart({ ticker, limite }) {
     [ticker, limite]
   )
 
-  const chartData = useMemo(() =>
-    (data || []).map(d => ({
+  const fullData = useMemo(() =>
+    (data || []).map((d, idx) => ({
+      idx,
+      fechaCompleta: d.fecha?.slice(0, 10),
       fecha: limite > 365 ? d.fecha?.slice(0, 10) : d.fecha?.slice(5, 10),
       close: +Number(d.close).toFixed(2),
     })),
     [data, limite]
   )
 
-  const isUp = chartData.length > 1
-    ? chartData.at(-1).close >= chartData[0].close
+  // Estado de Zoom [startIndex, endIndex] y selección con mouse
+  const [zoomRange, setZoomRange] = useState({ start: 0, end: 0 })
+  const [dragLeft, setDragLeft] = useState(null)
+  const [dragRight, setDragRight] = useState(null)
+
+  useEffect(() => {
+    if (fullData.length > 0) {
+      setZoomRange({ start: 0, end: fullData.length - 1 })
+    }
+  }, [fullData.length, ticker, limite])
+
+  const visibleData = useMemo(() => {
+    if (!fullData.length) return []
+    const s = Math.max(0, Math.min(zoomRange.start, fullData.length - 1))
+    const e = Math.max(s + 1, Math.min(zoomRange.end, fullData.length - 1))
+    return fullData.slice(s, e + 1)
+  }, [fullData, zoomRange])
+
+  const isZoomed = fullData.length > 2 && (zoomRange.start > 0 || zoomRange.end < fullData.length - 1)
+
+  const handleZoomIn = () => {
+    const len = zoomRange.end - zoomRange.start
+    if (len <= 10) return
+    const step = Math.max(2, Math.floor(len * 0.2))
+    setZoomRange(prev => ({
+      start: Math.min(prev.end - 5, prev.start + step),
+      end: Math.max(prev.start + 5, prev.end - step),
+    }))
+  }
+
+  const handleZoomOut = () => {
+    if (!fullData.length) return
+    const len = zoomRange.end - zoomRange.start
+    const step = Math.max(5, Math.floor(len * 0.25))
+    setZoomRange(prev => ({
+      start: Math.max(0, prev.start - step),
+      end: Math.min(fullData.length - 1, prev.end + step),
+    }))
+  }
+
+  const handleResetZoom = () => {
+    if (!fullData.length) return
+    setZoomRange({ start: 0, end: fullData.length - 1 })
+  }
+
+  const handleMouseUp = () => {
+    if (dragLeft != null && dragRight != null && dragLeft !== dragRight) {
+      const idxA = fullData.findIndex(d => d.fecha === dragLeft)
+      const idxB = fullData.findIndex(d => d.fecha === dragRight)
+      if (idxA !== -1 && idxB !== -1 && Math.abs(idxA - idxB) >= 3) {
+        setZoomRange({
+          start: Math.min(idxA, idxB),
+          end: Math.max(idxA, idxB),
+        })
+      }
+    }
+    setDragLeft(null)
+    setDragRight(null)
+  }
+
+  const isUp = visibleData.length > 1
+    ? visibleData.at(-1).close >= visibleData[0].close
     : true
 
   const color = isUp ? '#22c55e' : '#ef4444'
 
   if (loading) {
     return (
-      <div className="skeleton" style={{ height: 270, borderRadius: 8 }} />
+      <div className="skeleton" style={{ height: 310, borderRadius: 8 }} />
     )
   }
 
@@ -75,37 +137,65 @@ function HistorialPrecioChart({ ticker, limite }) {
     )
   }
 
-  const firstClose = chartData[0]?.close
-  const lastClose = chartData.at(-1)?.close
+  const firstClose = visibleData[0]?.close
+  const lastClose = visibleData.at(-1)?.close
   const retornoRango = firstClose && lastClose
     ? (((lastClose / firstClose) - 1) * 100)
     : null
 
   return (
-    <div>
-      {chartData.length > 1 && (
+    <div style={{ userSelect: 'none' }}>
+      {/* Barra de información del tramo visible + Controles de Zoom */}
+      {visibleData.length > 1 && (
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 8,
           fontSize: 11,
           color: 'var(--text-muted)',
-          marginBottom: 8,
+          marginBottom: 10,
           fontFamily: 'var(--font-mono)',
         }}>
-          <span>
-            Período: {data?.[0]?.fecha?.slice(0, 10)} → {data?.at(-1)?.fecha?.slice(0, 10)} ({chartData.length} ruedas)
-          </span>
-          {retornoRango != null && (
-            <span style={{ color: retornoRango >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
-              Variación en el período: {fmt.pct(retornoRango)}
+          <div>
+            <span>
+              Viendo: {visibleData[0]?.fechaCompleta} → {visibleData.at(-1)?.fechaCompleta} ({visibleData.length} ruedas)
             </span>
-          )}
+            {retornoRango != null && (
+              <span style={{ color: retornoRango >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 700, marginLeft: 12 }}>
+                Variación: {fmt.pct(retornoRango)}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              💡 Arrastrá sobre el gráfico o usá la barra inferior para hacer zoom
+            </span>
+            <button type="button" className="btn" style={{ padding: '3px 8px', fontSize: 11 }} onClick={handleZoomIn} title="Acercar zoom">
+              🔍+
+            </button>
+            <button type="button" className="btn" style={{ padding: '3px 8px', fontSize: 11 }} onClick={handleZoomOut} disabled={!isZoomed} title="Alejar zoom">
+              🔍−
+            </button>
+            {isZoomed && (
+              <button type="button" className="btn btn-primary" style={{ padding: '3px 9px', fontSize: 11 }} onClick={handleResetZoom}>
+                ⟲ Restablecer Zoom
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      <ResponsiveContainer width="100%" height={270}>
-        <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+      <ResponsiveContainer width="100%" height={310}>
+        <AreaChart
+          data={fullData}
+          margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+          onMouseDown={e => e?.activeLabel && setDragLeft(e.activeLabel)}
+          onMouseMove={e => dragLeft && e?.activeLabel && setDragRight(e.activeLabel)}
+          onMouseUp={handleMouseUp}
+        >
           <defs>
             <linearGradient id={`g-${ticker}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%"  stopColor={color} stopOpacity={0.18} />
@@ -122,7 +212,7 @@ function HistorialPrecioChart({ ticker, limite }) {
             tick={{ fill: '#3d5070', fontSize: 10, fontFamily: 'DM Mono' }}
             tickLine={false}
             axisLine={false}
-            interval={Math.max(1, Math.floor(chartData.length / 7))}
+            minTickGap={28}
           />
           <YAxis
             tick={{ fill: '#3d5070', fontSize: 10, fontFamily: 'DM Mono' }}
@@ -141,6 +231,30 @@ function HistorialPrecioChart({ ticker, limite }) {
             fill={`url(#g-${ticker})`}
             dot={false}
             activeDot={{ r: 3, fill: color }}
+            isAnimationActive={false}
+          />
+          {dragLeft && dragRight && (
+            <ReferenceArea
+              x1={dragLeft}
+              x2={dragRight}
+              strokeOpacity={0.3}
+              fill="#3b82f6"
+              fillOpacity={0.22}
+            />
+          )}
+          <Brush
+            dataKey="fecha"
+            height={26}
+            stroke="#3b82f6"
+            fill="rgba(15, 23, 42, 0.75)"
+            travellerWidth={8}
+            startIndex={zoomRange.start}
+            endIndex={zoomRange.end}
+            onChange={(r) => {
+              if (r && typeof r.startIndex === 'number' && typeof r.endIndex === 'number') {
+                setZoomRange({ start: r.startIndex, end: r.endIndex })
+              }
+            }}
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -250,12 +364,12 @@ export default function Dashboard({ ticker }) {
         )}
       </div>
 
-      {/* Gráfico principal con selector de historial completo */}
+      {/* Gráfico principal con selector de historial completo y Zoom interactivo */}
       <div className="card">
         <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="card-title">Precio Histórico · {ticker}</span>
-            <span className="tag tag-blue">OHLCV</span>
+            <span className="tag tag-blue">OHLCV + Zoom</span>
           </div>
 
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>

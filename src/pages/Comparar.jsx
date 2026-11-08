@@ -1,8 +1,8 @@
 // src/pages/Comparar.jsx
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend, ReferenceLine,
+  Tooltip, ResponsiveContainer, Legend, ReferenceLine, Brush, ReferenceArea,
 } from 'recharts'
 import { useApi } from '../hooks/useApi'
 import { getActivos, getComparacionActivos } from '../services/api'
@@ -14,9 +14,14 @@ const TICKER_COLORS = {
   GOOGL: '#f59e0b',
   AMZN:  '#a855f7',
   NVDA:  '#ec4899',
+  TSLA:  '#14b8a6',
+  META:  '#6366f1',
+  AMD:   '#f43f5e',
+  MELI:  '#eab308',
+  NFLX:  '#dc2626',
 }
 
-const FALLBACK_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#f43f5e']
+const FALLBACK_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#f43f5e', '#6366f1']
 
 const PRESET_LIMITS = [
   { value: 60,    label: '60d' },
@@ -28,7 +33,14 @@ const PRESET_LIMITS = [
 ]
 
 export default function Comparar() {
-  const { data: activosList } = useApi(getActivos, [])
+  const { data: activosList, refetch: refetchActivos } = useApi(getActivos, [])
+
+  useEffect(() => {
+    const handler = () => refetchActivos()
+    window.addEventListener('finpredict:activos-updated', handler)
+    return () => window.removeEventListener('finpredict:activos-updated', handler)
+  }, [refetchActivos])
+
   const tickersDisponibles = useMemo(
     () => (activosList?.length ? activosList.map(a => a.ticker) : ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA']),
     [activosList]
@@ -40,6 +52,11 @@ export default function Comparar() {
   const [diasInput, setDiasInput] = useState('252')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
+
+  // Estado de Zoom
+  const [zoomRange, setZoomRange] = useState({ start: 0, end: 0 })
+  const [dragLeft, setDragLeft] = useState(null)
+  const [dragRight, setDragRight] = useState(null)
 
   const toggleTicker = (t) => {
     setSeleccionados(prev => {
@@ -80,8 +97,63 @@ export default function Comparar() {
     [queryParams.tickers, queryParams.limite, queryParams.desde, queryParams.hasta]
   )
 
-  const series = data?.series || []
+  const series = useMemo(() => data?.series || [], [data])
   const resumen = data?.resumen || []
+
+  useEffect(() => {
+    if (series.length > 0) {
+      setZoomRange({ start: 0, end: series.length - 1 })
+    }
+  }, [series.length, queryParams.tickers, queryParams.limite, queryParams.desde, queryParams.hasta])
+
+  const visibleSeries = useMemo(() => {
+    if (!series.length) return []
+    const s = Math.max(0, Math.min(zoomRange.start, series.length - 1))
+    const e = Math.max(s + 1, Math.min(zoomRange.end, series.length - 1))
+    return series.slice(s, e + 1)
+  }, [series, zoomRange])
+
+  const isZoomed = series.length > 2 && (zoomRange.start > 0 || zoomRange.end < series.length - 1)
+
+  const handleZoomIn = () => {
+    const len = zoomRange.end - zoomRange.start
+    if (len <= 8) return
+    const step = Math.max(2, Math.floor(len * 0.2))
+    setZoomRange(prev => ({
+      start: Math.min(prev.end - 4, prev.start + step),
+      end: Math.max(prev.start + 4, prev.end - step),
+    }))
+  }
+
+  const handleZoomOut = () => {
+    if (!series.length) return
+    const len = zoomRange.end - zoomRange.start
+    const step = Math.max(5, Math.floor(len * 0.25))
+    setZoomRange(prev => ({
+      start: Math.max(0, prev.start - step),
+      end: Math.min(series.length - 1, prev.end + step),
+    }))
+  }
+
+  const handleResetZoom = () => {
+    if (!series.length) return
+    setZoomRange({ start: 0, end: series.length - 1 })
+  }
+
+  const handleMouseUp = () => {
+    if (dragLeft != null && dragRight != null && dragLeft !== dragRight) {
+      const idxA = series.findIndex(d => d.fecha === dragLeft)
+      const idxB = series.findIndex(d => d.fecha === dragRight)
+      if (idxA !== -1 && idxB !== -1 && Math.abs(idxA - idxB) >= 3) {
+        setZoomRange({
+          start: Math.min(idxA, idxB),
+          end: Math.max(idxA, idxB),
+        })
+      }
+    }
+    setDragLeft(null)
+    setDragRight(null)
+  }
 
   const inputStyle = {
     background: 'var(--bg-panel)',
@@ -216,22 +288,43 @@ export default function Comparar() {
         </div>
       </div>
 
-      {/* Gráfico Comparativo */}
-      <div className="card">
-        <div className="card-header">
-          <span className="card-title">
-            {modoGrafico === 'retorno'
-              ? 'Evolución Comparada de Rendimiento (% desde el inicio del período)'
-              : 'Evolución Comparada de Precio de Cierre (USD)'}
-          </span>
-          <span className="tag tag-blue">
-            {series.length} ruedas analizadas
-          </span>
+      {/* Gráfico Comparativo con Zoom Interactivo */}
+      <div className="card" style={{ userSelect: 'none' }}>
+        <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <span className="card-title">
+              {modoGrafico === 'retorno'
+                ? 'Evolución Comparada de Rendimiento (% desde el inicio del período)'
+                : 'Evolución Comparada de Precio de Cierre (USD)'}
+            </span>
+            {visibleSeries.length > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                Tramo visible: {visibleSeries[0]?.fecha} → {visibleSeries.at(-1)?.fecha} ({visibleSeries.length} de {series.length} ruedas)
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              💡 Arrastrá sobre el gráfico para hacer zoom
+            </span>
+            <button type="button" className="btn" style={{ padding: '3px 8px', fontSize: 11 }} onClick={handleZoomIn} title="Acercar zoom">
+              🔍+
+            </button>
+            <button type="button" className="btn" style={{ padding: '3px 8px', fontSize: 11 }} onClick={handleZoomOut} disabled={!isZoomed} title="Alejar zoom">
+              🔍−
+            </button>
+            {isZoomed && (
+              <button type="button" className="btn btn-primary" style={{ padding: '3px 9px', fontSize: 11 }} onClick={handleResetZoom}>
+                ⟲ Restablecer Zoom
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="card-body" style={{ paddingTop: 10 }}>
           {loading ? (
-            <div className="skeleton" style={{ height: 340, borderRadius: 8 }} />
+            <div className="skeleton" style={{ height: 370, borderRadius: 8 }} />
           ) : error ? (
             <div className="empty-state" style={{ padding: 32 }}>
               <div className="empty-icon">⚠</div>
@@ -243,15 +336,21 @@ export default function Comparar() {
           ) : series.length === 0 ? (
             <div className="empty-state">Sin datos para el rango seleccionado</div>
           ) : (
-            <ResponsiveContainer width="100%" height={340}>
-              <LineChart data={series} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+            <ResponsiveContainer width="100%" height={370}>
+              <LineChart
+                data={series}
+                margin={{ top: 8, right: 12, bottom: 0, left: 0 }}
+                onMouseDown={e => e?.activeLabel && setDragLeft(e.activeLabel)}
+                onMouseMove={e => dragLeft && e?.activeLabel && setDragRight(e.activeLabel)}
+                onMouseUp={handleMouseUp}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis
                   dataKey="fecha"
                   tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'DM Mono' }}
                   tickLine={false}
                   axisLine={false}
-                  interval={Math.max(1, Math.floor(series.length / 7))}
+                  minTickGap={28}
                 />
                 <YAxis
                   tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'DM Mono' }}
@@ -298,9 +397,33 @@ export default function Comparar() {
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 4, fill: color }}
+                      isAnimationActive={false}
                     />
                   )
                 })}
+                {dragLeft && dragRight && (
+                  <ReferenceArea
+                    x1={dragLeft}
+                    x2={dragRight}
+                    strokeOpacity={0.3}
+                    fill="#3b82f6"
+                    fillOpacity={0.22}
+                  />
+                )}
+                <Brush
+                  dataKey="fecha"
+                  height={26}
+                  stroke="#3b82f6"
+                  fill="rgba(15, 23, 42, 0.75)"
+                  travellerWidth={8}
+                  startIndex={zoomRange.start}
+                  endIndex={zoomRange.end}
+                  onChange={(r) => {
+                    if (r && typeof r.startIndex === 'number' && typeof r.endIndex === 'number') {
+                      setZoomRange({ start: r.startIndex, end: r.endIndex })
+                    }
+                  }}
+                />
               </LineChart>
             </ResponsiveContainer>
           )}
