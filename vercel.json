@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://trabajo-final-1-1q25.onrender.com/:path*"
+    }
+  ]
+}
