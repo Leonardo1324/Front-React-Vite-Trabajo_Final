@@ -1,5 +1,5 @@
 // src/services/api.js
-const BASE = '/api'
+const BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
 const TOKEN_KEY = 'finpredict_token'
 
 export const getToken = () =>
