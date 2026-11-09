@@ -1,26 +1,29 @@
 // src/pages/Precios.jsx
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine,
+  Tooltip, ResponsiveContainer, ReferenceLine, Brush, ReferenceArea,
 } from 'recharts'
 import { useApi } from '../hooks/useApi'
 import { getPreciosLimpios } from '../services/api'
 import { fmt } from '../utils/format'
 
 const INDICATOR_OPTS = [
-  { key: 'sma20',  label: 'SMA 20',  color: '#f59e0b' },
-  { key: 'sma50',  label: 'SMA 50',  color: '#a78bfa' },
-  { key: 'ema20',  label: 'EMA 20',  color: '#38bdf8' },
-  { key: 'bb_upper', label: 'BB Sup', color: '#64748b' },
-  { key: 'bb_lower', label: 'BB Inf', color: '#64748b' },
+  { key: 'sma20',    label: 'SMA 20',  color: '#f59e0b' },
+  { key: 'sma50',    label: 'SMA 50',  color: '#a78bfa' },
+  { key: 'ema20',    label: 'EMA 20',  color: '#38bdf8' },
+  { key: 'bb_upper', label: 'BB Sup',  color: '#64748b' },
+  { key: 'bb_lower', label: 'BB Inf',  color: '#64748b' },
 ]
 
 const LIMITS = [
-  { value: 60,  label: '60d' },
-  { value: 120, label: '120d' },
-  { value: 252, label: '1 año' },
-  { value: 504, label: '2 años' },
+  { value: 30,    label: '30d' },
+  { value: 60,    label: '60d' },
+  { value: 120,   label: '120d' },
+  { value: 252,   label: '1 año' },
+  { value: 504,   label: '2 años' },
+  { value: 1260,  label: '5 años' },
+  { value: 15000, label: 'Todo el historial' },
 ]
 
 function PriceTooltip({ active, payload, label }) {
@@ -36,7 +39,7 @@ function PriceTooltip({ active, payload, label }) {
       fontFamily: 'var(--font-mono)',
       minWidth: 150,
     }}>
-      <div style={{ color: 'var(--text-muted)', marginBottom: 6 }}>{label}</div>
+      <div style={{ color: 'var(--text-muted)', marginBottom: 6 }}>{d?.fechaCompleta || label}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <div style={{ color: 'var(--text-primary)' }}>Cierre <strong>{fmt.price(d?.close)}</strong></div>
         {d?.rsi14  && <div style={{ color: 'var(--text-secondary)' }}>RSI {fmt.rsi(d.rsi14)}</div>}
@@ -55,7 +58,7 @@ function RSIChart({ data }) {
   return (
     <div>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, letterSpacing: '0.08em' }}>
-        RSI 14 — Sobrecompra {'>'} 70 · Sobreventa {'<'} 30
+        RSI 14 (Sincronizado con Zoom) — Sobrecompra {'>'} 70 · Sobreventa {'<'} 30
       </div>
       <ResponsiveContainer width="100%" height={100}>
         <ComposedChart data={data} margin={{ top: 0, right: 4, bottom: 0, left: 0 }}>
@@ -66,7 +69,7 @@ function RSIChart({ data }) {
           <ReferenceLine y={70} stroke="rgba(239,68,68,0.4)"  strokeDasharray="3 2" />
           <ReferenceLine y={30} stroke="rgba(34,197,94,0.4)"  strokeDasharray="3 2" />
           <ReferenceLine y={50} stroke="rgba(255,255,255,0.08)" />
-          <Line type="monotone" dataKey="rsi14" stroke="#f59e0b" strokeWidth={1.5} dot={false} />
+          <Line type="monotone" dataKey="rsi14" stroke="#f59e0b" strokeWidth={1.5} dot={false} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -77,7 +80,7 @@ function MACDChart({ data }) {
   return (
     <div>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, letterSpacing: '0.08em' }}>
-        MACD · Señal · Histograma
+        MACD · Señal · Histograma (Sincronizado con Zoom)
       </div>
       <ResponsiveContainer width="100%" height={100}>
         <ComposedChart data={data} margin={{ top: 0, right: 4, bottom: 0, left: 0 }}>
@@ -86,13 +89,9 @@ function MACDChart({ data }) {
           <YAxis tick={{ fill: '#3d5070', fontSize: 10 }} tickLine={false} axisLine={false} width={40} tickFormatter={v => v.toFixed(1)} />
           <Tooltip content={() => null} />
           <ReferenceLine y={0} stroke="rgba(255,255,255,0.1)" />
-          <Bar dataKey="macd_hist"
-            fill="#3b82f6"
-            opacity={0.6}
-            maxBarSize={4}
-          />
-          <Line type="monotone" dataKey="macd"        stroke="#60a5fa" strokeWidth={1.5} dot={false} />
-          <Line type="monotone" dataKey="macd_signal" stroke="#f59e0b" strokeWidth={1}   dot={false} strokeDasharray="3 2" />
+          <Bar dataKey="macd_hist" fill="#3b82f6" opacity={0.6} maxBarSize={4} isAnimationActive={false} />
+          <Line type="monotone" dataKey="macd"        stroke="#60a5fa" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey="macd_signal" stroke="#f59e0b" strokeWidth={1}   dot={false} strokeDasharray="3 2" isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -100,18 +99,48 @@ function MACDChart({ data }) {
 }
 
 export default function Precios({ ticker }) {
-  const [limite, setLimite] = useState(120)
+  const [limite, setLimite] = useState(252)
+  const [diasCustom, setDiasCustom] = useState('252')
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
   const [indicadores, setIndicadores] = useState(['sma20', 'bb_upper', 'bb_lower'])
 
-  const { data, loading, error } = useApi(
-    () => getPreciosLimpios(ticker, { limite }),
-    [ticker, limite]
+  // Estado de Zoom
+  const [zoomRange, setZoomRange] = useState({ start: 0, end: 0 })
+  const [dragLeft, setDragLeft] = useState(null)
+  const [dragRight, setDragRight] = useState(null)
+
+  const handleSelectPreset = (val) => {
+    setLimite(val)
+    setDiasCustom(val >= 15000 ? '' : String(val))
+  }
+
+  const handleDiasChange = (e) => {
+    const val = e.target.value
+    setDiasCustom(val)
+    const n = parseInt(val, 10)
+    if (!isNaN(n) && n >= 1 && n <= 20000) {
+      setLimite(n)
+    }
+  }
+
+  const queryParams = useMemo(() => {
+    const p = { limite }
+    if (desde) p.desde = desde
+    if (hasta) p.hasta = hasta
+    return p
+  }, [limite, desde, hasta])
+
+  const { data, loading, error, refetch } = useApi(
+    () => getPreciosLimpios(ticker, queryParams),
+    [ticker, queryParams.limite, queryParams.desde, queryParams.hasta]
   )
 
   const chartData = useMemo(() =>
     (data || []).map(d => ({
       ...d,
-      fecha: d.fecha?.slice(5),
+      fechaCompleta: d.fecha?.slice(0, 10),
+      fecha: (data?.length || 0) > 365 ? d.fecha?.slice(0, 10) : d.fecha?.slice(5, 10),
       close: +Number(d.close).toFixed(2),
       rsi14: d.rsi14 ? +Number(d.rsi14).toFixed(2) : null,
       macd: d.macd ? +Number(d.macd).toFixed(3) : null,
@@ -121,42 +150,159 @@ export default function Precios({ ticker }) {
     [data]
   )
 
-  const lastRow = data?.at(-1)
+  useEffect(() => {
+    if (chartData.length > 0) {
+      setZoomRange({ start: 0, end: chartData.length - 1 })
+    }
+  }, [chartData.length, ticker, limite, desde, hasta])
+
+  const visibleData = useMemo(() => {
+    if (!chartData.length) return []
+    const s = Math.max(0, Math.min(zoomRange.start, chartData.length - 1))
+    const e = Math.max(s + 1, Math.min(zoomRange.end, chartData.length - 1))
+    return chartData.slice(s, e + 1)
+  }, [chartData, zoomRange])
+
+  const isZoomed = chartData.length > 2 && (zoomRange.start > 0 || zoomRange.end < chartData.length - 1)
+
+  const handleZoomIn = () => {
+    const len = zoomRange.end - zoomRange.start
+    if (len <= 8) return
+    const step = Math.max(2, Math.floor(len * 0.2))
+    setZoomRange(prev => ({
+      start: Math.min(prev.end - 4, prev.start + step),
+      end: Math.max(prev.start + 4, prev.end - step),
+    }))
+  }
+
+  const handleZoomOut = () => {
+    if (!chartData.length) return
+    const len = zoomRange.end - zoomRange.start
+    const step = Math.max(5, Math.floor(len * 0.25))
+    setZoomRange(prev => ({
+      start: Math.max(0, prev.start - step),
+      end: Math.min(chartData.length - 1, prev.end + step),
+    }))
+  }
+
+  const handleResetZoom = () => {
+    if (!chartData.length) return
+    setZoomRange({ start: 0, end: chartData.length - 1 })
+  }
+
+  const handleMouseUp = () => {
+    if (dragLeft != null && dragRight != null && dragLeft !== dragRight) {
+      const idxA = chartData.findIndex(d => d.fecha === dragLeft)
+      const idxB = chartData.findIndex(d => d.fecha === dragRight)
+      if (idxA !== -1 && idxB !== -1 && Math.abs(idxA - idxB) >= 3) {
+        setZoomRange({
+          start: Math.min(idxA, idxB),
+          end: Math.max(idxA, idxB),
+        })
+      }
+    }
+    setDragLeft(null)
+    setDragRight(null)
+  }
+
+  const lastRow = !error ? data?.at(-1) : null
 
   const toggleIndicador = (key) =>
     setIndicadores(prev =>
       prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
     )
 
+  const inputStyle = {
+    background: 'var(--bg-panel)',
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    padding: '5px 10px',
+    color: 'var(--text-primary)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: 12,
+  }
+
   return (
     <div className="col fade-in">
-      {/* Controles */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {LIMITS.map(l => (
-            <button
-              key={l.value}
-              className={`ticker-tab${limite === l.value ? ' active' : ''}`}
-              onClick={() => setLimite(l.value)}
-            >
-              {l.label}
-            </button>
-          ))}
-        </div>
+      {/* Controles de Rango, Cantidad de Días, Fechas Desde/Hasta e Indicadores */}
+      <div className="card" style={{ padding: '14px 16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            {/* Botones rápidos */}
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {LIMITS.map(l => (
+                <button
+                  key={l.value}
+                  type="button"
+                  className={`ticker-tab${limite === l.value && !desde && !hasta ? ' active' : ''}`}
+                  onClick={() => handleSelectPreset(l.value)}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
 
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {INDICATOR_OPTS.map(opt => (
-            <button
-              key={opt.key}
-              className="btn"
-              style={indicadores.includes(opt.key)
-                ? { borderColor: opt.color, color: opt.color, background: `${opt.color}15` }
-                : {}}
-              onClick={() => toggleIndicador(opt.key)}
-            >
-              {opt.label}
-            </button>
-          ))}
+            {/* Cantidad personalizada de días */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Cant. días:</label>
+              <input
+                type="number"
+                min={1}
+                max={20000}
+                placeholder="Ej. 90"
+                value={diasCustom}
+                onChange={handleDiasChange}
+                style={{ ...inputStyle, width: 85 }}
+                title="Elegí la cantidad exacta de ruedas bursátiles a visualizar"
+              />
+            </div>
+
+            {/* Rango de fechas Desde - Hasta */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Desde:</label>
+              <input
+                type="date"
+                value={desde}
+                onChange={e => setDesde(e.target.value)}
+                style={inputStyle}
+              />
+              <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Hasta:</label>
+              <input
+                type="date"
+                value={hasta}
+                onChange={e => setHasta(e.target.value)}
+                style={inputStyle}
+              />
+              {(desde || hasta) && (
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ fontSize: 11, padding: '4px 8px' }}
+                  onClick={() => { setDesde(''); setHasta('') }}
+                >
+                  ✕ Limpiar fechas
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Selector de Indicadores Técnicos superpuestos */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 4 }}>Indicadores en gráfico:</span>
+            {INDICATOR_OPTS.map(opt => (
+              <button
+                key={opt.key}
+                type="button"
+                className="btn"
+                style={indicadores.includes(opt.key)
+                  ? { borderColor: opt.color, color: opt.color, background: `${opt.color}15` }
+                  : {}}
+                onClick={() => toggleIndicador(opt.key)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -164,13 +310,13 @@ export default function Precios({ ticker }) {
       {lastRow && (
         <div className="metrics-grid">
           {[
-            { label: 'RSI 14', value: fmt.rsi(lastRow.rsi14),
+            { label: 'RSI 14',   value: fmt.rsi(lastRow.rsi14),
               color: lastRow.rsi14 > 70 ? 'negative' : lastRow.rsi14 < 30 ? 'positive' : '' },
-            { label: 'SMA 20',  value: fmt.price(lastRow.sma20) },
-            { label: 'SMA 50',  value: fmt.price(lastRow.sma50) },
-            { label: 'ATR 14',  value: fmt.num2(lastRow.atr14), sub: 'Volatilidad diaria' },
+            { label: 'SMA 20',   value: fmt.price(lastRow.sma20) },
+            { label: 'SMA 50',   value: fmt.price(lastRow.sma50) },
+            { label: 'ATR 14',   value: fmt.num2(lastRow.atr14), sub: 'Volatilidad diaria' },
             { label: 'BB Width', value: fmt.num3(lastRow.bb_width), sub: 'Bandas Bollinger' },
-            { label: 'VWAP',    value: fmt.price(lastRow.vwap), sub: '20d rolling' },
+            { label: 'VWAP',     value: fmt.price(lastRow.vwap), sub: '20d rolling' },
           ].map(m => (
             <div key={m.label} className="metric-card">
               <div className="metric-label">{m.label}</div>
@@ -181,24 +327,59 @@ export default function Precios({ ticker }) {
         </div>
       )}
 
-      {/* Gráfico de precios */}
-      <div className="card">
-        <div className="card-header">
-          <span className="card-title">Precio + Indicadores · {ticker}</span>
-          <span className="tag tag-blue">Datos R</span>
+      {/* Gráfico de precios con Zoom interactivo */}
+      <div className="card" style={{ userSelect: 'none' }}>
+        <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <span className="card-title">
+              Precio + Indicadores Técnicos · {ticker}
+            </span>
+            {visibleData.length > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                Tramo visible: {visibleData[0]?.fechaCompleta} → {visibleData.at(-1)?.fechaCompleta} ({visibleData.length} de {chartData.length} ruedas)
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              💡 Arrastrá en el gráfico para hacer zoom
+            </span>
+            <button type="button" className="btn" style={{ padding: '3px 8px', fontSize: 11 }} onClick={handleZoomIn} title="Acercar zoom">
+              🔍+
+            </button>
+            <button type="button" className="btn" style={{ padding: '3px 8px', fontSize: 11 }} onClick={handleZoomOut} disabled={!isZoomed} title="Alejar zoom">
+              🔍−
+            </button>
+            {isZoomed && (
+              <button type="button" className="btn btn-primary" style={{ padding: '3px 9px', fontSize: 11 }} onClick={handleResetZoom}>
+                ⟲ Restablecer Zoom
+              </button>
+            )}
+          </div>
         </div>
+
         <div className="card-body" style={{ paddingTop: 8 }}>
           {loading
-            ? <div className="skeleton" style={{ height: 280, borderRadius: 6 }} />
+            ? <div className="skeleton" style={{ height: 310, borderRadius: 6 }} />
             : error
               ? <div className="empty-state">
                   <div className="empty-icon">⚠</div>
-                  <div>{error}</div>
+                  <div style={{ color: 'var(--red)', fontWeight: 600 }}>{error}</div>
+                  <button type="button" className="btn" style={{ marginTop: 8 }} onClick={refetch}>
+                    ↻ Reintentar
+                  </button>
                 </div>
               : (
                 <>
-                  <ResponsiveContainer width="100%" height={280}>
-                    <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <ResponsiveContainer width="100%" height={310}>
+                    <ComposedChart
+                      data={chartData}
+                      margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+                      onMouseDown={e => e?.activeLabel && setDragLeft(e.activeLabel)}
+                      onMouseMove={e => dragLeft && e?.activeLabel && setDragRight(e.activeLabel)}
+                      onMouseUp={handleMouseUp}
+                    >
                       <defs>
                         <linearGradient id="closeGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.15} />
@@ -211,7 +392,7 @@ export default function Precios({ ticker }) {
                         tick={{ fill: '#3d5070', fontSize: 10, fontFamily: 'DM Mono' }}
                         tickLine={false}
                         axisLine={false}
-                        interval={Math.floor(chartData.length / 6)}
+                        minTickGap={28}
                       />
                       <YAxis
                         tick={{ fill: '#3d5070', fontSize: 10, fontFamily: 'DM Mono' }}
@@ -223,7 +404,7 @@ export default function Precios({ ticker }) {
                       />
                       <Tooltip content={<PriceTooltip />} />
                       {/* Precio principal */}
-                      <Line type="monotone" dataKey="close" stroke="#3b82f6" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="close" stroke="#3b82f6" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
                       {/* Indicadores seleccionados */}
                       {INDICATOR_OPTS.filter(o => indicadores.includes(o.key)).map(opt => (
                         <Line
@@ -234,15 +415,39 @@ export default function Precios({ ticker }) {
                           strokeWidth={1}
                           dot={false}
                           strokeDasharray={opt.key.startsWith('bb') ? '4 2' : undefined}
+                          isAnimationActive={false}
                         />
                       ))}
+                      {dragLeft && dragRight && (
+                        <ReferenceArea
+                          x1={dragLeft}
+                          x2={dragRight}
+                          strokeOpacity={0.3}
+                          fill="#3b82f6"
+                          fillOpacity={0.22}
+                        />
+                      )}
+                      <Brush
+                        dataKey="fecha"
+                        height={26}
+                        stroke="#3b82f6"
+                        fill="rgba(15, 23, 42, 0.75)"
+                        travellerWidth={8}
+                        startIndex={zoomRange.start}
+                        endIndex={zoomRange.end}
+                        onChange={(r) => {
+                          if (r && typeof r.startIndex === 'number' && typeof r.endIndex === 'number') {
+                            setZoomRange({ start: r.startIndex, end: r.endIndex })
+                          }
+                        }}
+                      />
                     </ComposedChart>
                   </ResponsiveContainer>
 
-                  {/* Subgráficos */}
+                  {/* Subgráficos sincronizados con el Zoom */}
                   <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
-                    <RSIChart  data={chartData} />
-                    <MACDChart data={chartData} />
+                    <RSIChart  data={visibleData} />
+                    <MACDChart data={visibleData} />
                   </div>
                 </>
               )
