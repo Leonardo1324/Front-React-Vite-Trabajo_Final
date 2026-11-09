@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import Sidebar from './components/sidebar'
 import TickerSelector from './components/TickerSelector'
+import AyudaPanel from './components/AyudaPanel'
 import Dashboard from './pages/Dashboard'
 import Catalogo  from './pages/Catalogo'
 import Precios   from './pages/Precios'
@@ -192,6 +193,9 @@ export default function App() {
             }}
           />
         </main>
+
+        {/* Panel flotante global de Ayuda (Google Gemini API) */}
+        <AyudaPanel activePage={paginaEfectiva} ticker={ticker} />
       </div>
     </div>
   )

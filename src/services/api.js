@@ -128,3 +128,13 @@ export const getRoles               = () => request('/auth/roles')
 export const getUsuarios            = () => request('/auth/usuarios')
 export const getAuditoria           = (p = {}) => { const q = new URLSearchParams(p).toString(); return request(`/auth/auditoria${q ? '?' + q : ''}`) }
 export const getSoloAdmin           = () => request('/auth/solo-admin')
+
+// ── Ayuda Pedagógica y Descriptiva (Google Gemini API) ────────────────────────
+export const getEstadoAyuda         = () => request('/ayuda/estado')
+export const configurarGeminiKey    = (apiKey) =>
+  request('/ayuda/configurar-key', { method: 'POST', body: JSON.stringify({ api_key: apiKey }) })
+export const explicarPantalla       = ({ vista, ticker, pregunta = null, contexto_extra = null }) =>
+  request('/ayuda/explicar', {
+    method: 'POST',
+    body: JSON.stringify({ vista, ticker, pregunta, contexto_extra }),
+  })
