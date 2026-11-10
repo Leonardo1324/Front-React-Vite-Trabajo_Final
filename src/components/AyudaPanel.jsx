@@ -1,6 +1,6 @@
 // src/components/AyudaPanel.jsx
 import { useState, useEffect } from 'react'
-import { explicarPantalla, getEstadoAyuda, configurarGeminiKey } from '../services/api'
+import { explicarPantalla } from '../services/api'
 
 const PREGUNTAS_SUGERIDAS = {
   dashboard: [
@@ -165,13 +165,6 @@ export default function AyudaPanel({ activePage, ticker }) {
   const [preguntaActiva, setPreguntaActiva] = useState(null)
   const [error, setError] = useState(null)
 
-  // Estado de configuración de Google Gemini API
-  const [geminiActivo, setGeminiActivo] = useState(false)
-  const [mostrarConfigKey, setMostrarConfigKey] = useState(false)
-  const [inputApiKey, setInputApiKey] = useState('')
-  const [guardandoKey, setGuardandoKey] = useState(false)
-  const [mensajeKey, setMensajeKey] = useState(null)
-
   const consultarAyuda = async (preguntaEspecifica = null) => {
     setCargando(true)
     setError(null)
@@ -183,9 +176,6 @@ export default function AyudaPanel({ activePage, ticker }) {
         pregunta: preguntaEspecifica,
       })
       setRespuesta(res)
-      if (res?.origen === 'gemini' || res?.gemini_configurado) {
-        setGeminiActivo(true)
-      }
     } catch (e) {
       setError(e.message || 'No se pudo obtener la explicación de la pantalla.')
     } finally {
@@ -195,9 +185,6 @@ export default function AyudaPanel({ activePage, ticker }) {
 
   useEffect(() => {
     if (!abierto) return
-    getEstadoAyuda()
-      .then(st => setGeminiActivo(Boolean(st?.gemini_configurado)))
-      .catch(() => {})
     consultarAyuda(null)
   }, [abierto, activePage, ticker])
 
@@ -207,26 +194,6 @@ export default function AyudaPanel({ activePage, ticker }) {
     if (!limpia || cargando) return
     setPreguntaUsuario('')
     consultarAyuda(limpia)
-  }
-
-  const handleGuardarKey = async (e) => {
-    e.preventDefault()
-    const limpia = inputApiKey.trim()
-    if (!limpia) return
-    setGuardandoKey(true)
-    setMensajeKey(null)
-    try {
-      await configurarGeminiKey(limpia)
-      setGeminiActivo(true)
-      setInputApiKey('')
-      setMostrarConfigKey(false)
-      setMensajeKey('✓ Google Gemini API activada correctamente.')
-      consultarAyuda(preguntaActiva)
-    } catch (err) {
-      setMensajeKey(`⚠ ${err.message}`)
-    } finally {
-      setGuardandoKey(false)
-    }
   }
 
   const sugerencias = PREGUNTAS_SUGERIDAS[activePage] || PREGUNTAS_SUGERIDAS.dashboard
@@ -356,15 +323,6 @@ export default function AyudaPanel({ activePage, ticker }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                 <button
                   type="button"
-                  className="btn"
-                  style={{ fontSize: 11, padding: '6px 10px', background: 'var(--bg-hover)' }}
-                  onClick={() => setMostrarConfigKey(prev => !prev)}
-                  title="Configurar API Key de Google Gemini"
-                >
-                  🔑 {geminiActivo ? 'API Key' : 'Conectar Gemini'}
-                </button>
-                <button
-                  type="button"
                   onClick={() => setAbierto(false)}
                   title="Cerrar panel de Ayuda"
                   style={{
@@ -397,54 +355,6 @@ export default function AyudaPanel({ activePage, ticker }) {
             >
               Explicación <strong style={{ color: 'var(--text-primary)' }}>pedagógica y 100% descriptiva</strong> de lo que se observa en pantalla. No constituye sugerencia ni consejo financiero.
             </div>
-
-            {/* Formulario desplegable opcional para configurar GEMINI_API_KEY */}
-            {mostrarConfigKey && (
-              <form
-                onSubmit={handleGuardarKey}
-                style={{
-                  flexShrink: 0,
-                  padding: '14px 20px',
-                  background: 'var(--bg-card)',
-                  borderBottom: '1px solid var(--border-accent)',
-                }}
-              >
-                <div style={{ fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.45, marginBottom: 8 }}>
-                  Pegá tu <strong>GEMINI_API_KEY</strong> (de Google AI Studio) para generar las explicaciones con <code>gemini-2.5-flash</code>:
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    type="password"
-                    value={inputApiKey}
-                    onChange={e => setInputApiKey(e.target.value)}
-                    placeholder="AIzaSy..."
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      borderRadius: 6,
-                      border: '1px solid var(--border-accent)',
-                      background: 'var(--bg-base)',
-                      color: 'var(--text-primary)',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 12,
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={guardandoKey || !inputApiKey.trim()}
-                    style={{ fontSize: 12, padding: '8px 14px' }}
-                  >
-                    {guardandoKey ? 'Guardando…' : 'Guardar'}
-                  </button>
-                </div>
-                {mensajeKey && (
-                  <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--accent)', marginTop: 6 }}>
-                    {mensajeKey}
-                  </div>
-                )}
-              </form>
-            )}
 
             {/* Cuerpo desplazable en flujo de bloque normal (display: block) para que ninguna caja se encoja ni desborde */}
             <div
