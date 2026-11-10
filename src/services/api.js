@@ -1,5 +1,21 @@
 // src/services/api.js
-const BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
+const RENDER_BACKEND_URL = 'https://trabajo-final-1-1q25.onrender.com'
+
+function resolveApiBase() {
+  const rawEnv = (import.meta.env.VITE_API_URL || '').trim().replace(/^["']+|["']+$/g, '').replace(/\/+$/, '')
+  if (rawEnv && rawEnv.startsWith('http')) {
+    return rawEnv
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      return RENDER_BACKEND_URL
+    }
+  }
+  return '/api'
+}
+
+const BASE = resolveApiBase()
 const TOKEN_KEY = 'finpredict_token'
 
 export const getToken = () =>
